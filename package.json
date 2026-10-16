@@ -16,5 +16,14 @@
       "inject": ["@deepseek-ai/dsh-api-remotes"]
     }
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "yaml": "^2.9.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-atomic-write": "^0.2.0-rc.2"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-atomic-write": "^0.2.0-rc.2"
+  }
 }

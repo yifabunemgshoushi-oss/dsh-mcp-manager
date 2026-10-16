@@ -1,4 +1,4 @@
-# 依赖：随插件自带的运行时依赖，不入库（与 dsh bundle 惯例一致）。
+# 依赖：由 package.json 声明（dependencies / peerDependencies），安装时由 pnpm 或宿主供给，不入库。
 node_modules/
 
 # 本地临时文件

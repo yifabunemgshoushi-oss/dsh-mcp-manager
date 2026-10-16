@@ -29,14 +29,21 @@ dsh-mcp-manager/
 ├── lib/
 │   ├── index.js          # Host 半：/api/mcp-config 路由与 patch 行读写
 │   └── client.js         # Client 半：GUI「MCP 服务器」页面
-├── node_modules/         # 自带运行时依赖（已 gitignore，不入库）
+├── node_modules/         # 安装时由 pnpm 装入（已 gitignore，不入库）
 ├── .gitignore
 ├── LICENSE               # MIT
 └── README.md
 ```
 
-`node_modules/` 内含本插件运行所需的 `@deepseek-ai/dsh-atomic-write` 与 `yaml`，
-随插件自带（第三方 bundle 无法从自身位置解析 dsh 安装内的包），因此不纳入版本库。
+依赖全部写在 `package.json` 里，仓库不携带 `node_modules/`：
+
+| 依赖 | 声明位置 | 由谁提供 |
+|---|---|---|
+| `yaml` | `dependencies` | 安装插件时 pnpm 装进 profile `node_modules` |
+| `@deepseek-ai/dsh-atomic-write` | `peerDependencies` + `devDependencies` | 运行中的 dsh 运行时闭包（同一份实例，不与宿主重复加载） |
+
+`dsh-atomic-write` 声明为 peer 而非 dependency，是让它由宿主供给单一实例，
+插件仓库因此既不需要、也不应该携带 `node_modules`。
 
 ## 安装与启用
 
@@ -46,7 +53,13 @@ dsh-mcp-manager/
 - `dsh.client` 声明 `platform: web` 与 inject 目标，由 dsh 客户端模块系统把
   `lib/client.js` 作为浏览器半侧送出。
 
-将本目录放入 dsh 的插件目录并重启 DSH 即可；加载后在左侧导航出现「MCP 服务器」。
+通过 dsh 插件管理器或 `dsh plugin --profile <profile> add <本仓库地址>` 安装：pnpm 会按
+`dependencies` 自动装上 `yaml`（peer 由宿主供给，pnpm 不装）。加载后在左侧导航出现「MCP 服务器」。
+
+> 本地开发若用 `link:` 挂载源码目录，pnpm 不会安装本插件的 `dependencies`；此时需在插件
+> 目录内执行一次 `pnpm install` 得到本地 `node_modules`（已 gitignore），解析时插件自身
+> 的 `node_modules` 优先级最高。用 `github:` / tarball 地址安装则依赖自动装进 profile，
+> 无需此步。
 
 ## 能力边界
 
