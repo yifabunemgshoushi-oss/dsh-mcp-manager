@@ -1,0 +1,6 @@
+# 本 bundle 的 patch 层：把 MCP 管理插件插入 profile。
+# Host 半当前是空的 apply（只为占一条 Loader 行），客户端模块系统据此把
+# lib/client.js 作为浏览器半侧送出（dsh-client-modules 扫描 dsh.client 声明）。
+- insert:
+    - id: mcp-manager
+      name: dsh-mcp-manager

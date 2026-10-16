@@ -1,0 +1,20 @@
+{
+  "name": "dsh-mcp-manager",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "在 dsh 桌面版 GUI 中查看并管理当前 profile 的 MCP 服务器（@deepseek-ai/dsh-mcp-client 行）",
+  "main": "lib/index.js",
+  "exports": {
+    ".": { "default": "./lib/index.js" },
+    "./client": { "default": "./lib/client.js" }
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-api-remotes"]
+    }
+  },
+  "license": "MIT"
+}
