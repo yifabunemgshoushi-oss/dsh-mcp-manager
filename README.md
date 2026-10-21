@@ -55,7 +55,9 @@ dsh-mcp-manager/
   `lib/client.js` 作为浏览器半侧送出。
 
 通过 dsh 插件管理器或 `dsh plugin --profile <profile> add <本仓库地址>` 安装：pnpm 会按
-`dependencies` 自动装上 `yaml`（peer 由宿主供给，pnpm 不装）。加载后在左侧导航出现「MCP 服务器」。
+`dependencies` 自动装上 `yaml`（peer 由宿主供给，pnpm 不装）。加载后入口出现在**「设置」页
+的侧边列表**里，名为「MCP 服务器」（本插件注册的是 `settings.section` 槽位，不在主界面左侧
+导航）。
 
 > 本地开发若用 `link:` 挂载源码目录，pnpm 不会安装本插件的 `dependencies`；此时需在插件
 > 目录内执行一次 `pnpm install` 得到本地 `node_modules`（已 gitignore），解析时插件自身
