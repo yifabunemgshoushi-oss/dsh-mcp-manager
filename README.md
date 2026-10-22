@@ -1,7 +1,7 @@
 # dsh-mcp-manager
 
-在 dsh 桌面版 GUI 中查看并管理当前 profile 的 MCP 服务器
-（即 `cordis.patch.yml` 中 `@deepseek-ai/dsh-mcp-client` 的 insert 行）。
+在 dsh 桌面版 GUI 中查看并管理 MCP 服务器：profile 级（`cordis.patch.yml` 中
+`@deepseek-ai/dsh-mcp-client` 的 insert 行）与**项目级**（项目根目录的 `.dsh/mcp.yml`）。
 
 ## 这是什么
 
@@ -13,13 +13,64 @@ dsh 的 MCP 客户端把每个 MCP 服务器声明为一条 profile patch 的 in
   `/api/mcp-config`，提供 `list` / `save` / `remove` 三种操作。写入时直接用
   yaml 的 Document API 在 `cordis.patch.yml` 里就地改写目标行，因此注释、缩进、
   折行与 `!!js` 表达式全部原样保留；落盘走 dsh 自己的原子写 + 文件锁。
-- **Client 半**（`lib/client.js`）：桌面 GUI 中的「MCP 服务器」页面。可列出当前
-  profile 的全部 MCP 服务器，查看其 serverName / 传输方式 / 目标 / 工具数 / 运行状态，
-  点「新增服务器」按表单填写后直接追加一行（行 id 默认由 serverName 派生，可手改），
-  编辑并保存配置（热重载，无需重启），启用或停用，从 `{"mcpServers": {...}}` 片段
-  批量导入，以及删除（删除前自动备份原文到同目录 `.bak`）。
+  同一路由还提供 `project/read` / `project/save` / `project/merge` 三个项目级操作，
+  并在会话创建时把项目服务器挂进该会话的 scope。
+- **Client 半**（`lib/client.js`）：桌面 GUI 中的「MCP 服务器」页面，分两个 tab。
+  **全局**：列出当前 profile 的全部 MCP 服务器，查看其 serverName / 传输方式 /
+  目标 / 工具数 / 运行状态，点「新增服务器」按表单填写后直接追加一行（行 id 默认
+  由 serverName 派生，可手改），编辑并保存配置（热重载，无需重启），启用或停用，
+  从 `{"mcpServers": {...}}` 片段批量导入，以及删除（删除前自动备份原文到同目录 `.bak`）。
+  **项目**：选一个工作区，直接编辑该项目的 `.dsh/mcp.yml`，并把 `.mcp.json` 片段
+  转换后合并进编辑器。
 
 界面文案内置中文与英文两套，跟随 dsh 主题 token 适配外观。
+
+## 项目级 MCP
+
+「项目」在 dsh 里只有一个含义：**会话的工作目录**。插件从会话 cwd 向上找第一个含
+`.git` 的目录作为项目根（与 `.dsh/skills` 的判定一致；找不到 `.git` 时就是 cwd 本身），
+再读该目录下的 `.dsh/mcp.yml`：
+
+```yaml
+# 项目级 MCP 服务器：只对本目录下新建的会话生效，已开启的会话不受影响。
+version: 1
+# 要在这个项目里关闭的全局服务器（按 serverName）：
+disableGlobal:
+  - utools
+servers:
+  playwright:
+    transport: stdio
+    command: npx
+    args: ["-y", "@playwright/mcp"]
+  figma:
+    url: https://mcp.figma.com/mcp   # 省略 transport：有 url 即 streamable-http
+    headers:
+      Authorization: "Bearer ..."
+```
+
+语义：
+
+| 情形 | 行为 |
+|---|---|
+| 项目有、全局没有 | 新增，只对该项目的会话可见 |
+| 与全局同名 serverName | 项目覆盖全局（工具层 own 覆盖 inherited），**全局那份实例仍在后台运行**，只是工具被遮蔽 |
+| 全局有、项目不想用 | 写进 `disableGlobal`，按 serverName 前缀 `mcp__<name>__` 调 `tools.restrict({deny})` |
+| 配置文件写错某条 | 该条跳过并在日志/界面报出原因，其余条目照常生效 |
+
+实现方式与 dsh 内部的 `browser-use-runtime` 相同：`agent/created` 时
+`createScope(ctx, agent)` + `scope.ctx.plugin(McpClient, config)`，工具因此落在该
+agent 的层里；会话销毁时 scope 一并释放，MCP 连接与子进程随之退出。挂载**不 await**，
+一个连不上的项目服务器不会拖住会话创建（工具会在随后的 `tools/change` 里补上）。
+
+注意事项：
+
+- 配置**只在会话创建时读取一次**，改完要新开会话才生效；已开启的会话保持原样。
+- 每个带项目服务器的会话都会起自己的 MCP 子进程，开很多会话时资源占用会上升。
+- 项目配置可能含 token，落盘权限为 `0600`；提交进 git 前请自行确认，并考虑加
+  `.gitignore`。
+- 项目级依赖 dsh 的 `working-directory` 服务（`dsh-base` 自带）。没有它的组合里，
+  项目级功能自动不生效，全局 MCP 管理不受影响。
+
 
 ## 仓库结构
 
@@ -42,9 +93,13 @@ dsh-mcp-manager/
 |---|---|---|
 | `yaml` | `dependencies` | 安装插件时 pnpm 装进 profile `node_modules` |
 | `@deepseek-ai/dsh-atomic-write` | `peerDependencies` + `devDependencies` | 运行中的 dsh 运行时闭包（同一份实例，不与宿主重复加载） |
+| `@deepseek-ai/dsh-mcp-client` | `peerDependencies` | 同上；项目级挂载要复用宿主那份 `Config` 与 `apply` |
+| `@deepseek-ai/dsh-scope` | `peerDependencies` | 同上；`createScope` 用来给每个会话开独立作用域 |
 
-`dsh-atomic-write` 声明为 peer 而非 dependency，是让它由宿主供给单一实例，
-插件仓库因此既不需要、也不应该携带 `node_modules`。
+`dsh-atomic-write` / `dsh-mcp-client` / `dsh-scope` 声明为 peer 而非 dependency，
+是让它们由宿主供给单一实例，插件仓库因此既不需要、也不应该携带 `node_modules`。
+peer 声明还有一层实际作用：profile 的运行时解析拦截只把**声明为 peer** 的请求路由到
+dsh 安装目录里的那份包，没声明时 `require` 会直接 `MODULE_NOT_FOUND`。
 
 ## 安装与启用
 
@@ -72,6 +127,10 @@ dsh-mcp-manager/
   编辑文件。注释只在新建时写入，改写既有行不会动它。
 - 删除：删除前回报「会一并删掉的注释行数」供确认，并把原文备份到同目录 `.bak`。
 - 写入只改目标行（就地逐键合并），注释、缩进、折行与 `!!js` 表达式保持原样。
+- 项目级：配置文件以纯文本编辑（保留注释与顺序），`.mcp.json` 的转换结果先填进
+  编辑器、由用户确认后再保存；同名的 `.mcp.json` 条目会覆盖既有条目并明确提示。
+- 项目级不做「运行中会话热切换」：会话中途切目录不会重新挂载，配置改动也只在
+  新会话生效。
 
 ## 许可证
 
