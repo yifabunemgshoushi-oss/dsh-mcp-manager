@@ -13,15 +13,17 @@ dsh 的 MCP 客户端把每个 MCP 服务器声明为一条 profile patch 的 in
   `/api/mcp-config`，提供 `list` / `save` / `remove` 三种操作。写入时直接用
   yaml 的 Document API 在 `cordis.patch.yml` 里就地改写目标行，因此注释、缩进、
   折行与 `!!js` 表达式全部原样保留；落盘走 dsh 自己的原子写 + 文件锁。
-  同一路由还提供 `project/read` / `project/save` / `project/merge` 三个项目级操作，
+  同一路由还提供 `project/read` / `project/save` / `project/merge` 项目级操作，
+  以及卡片用的 `project/update` / `project/remove` / `project/toggle`，
   并在会话创建时把项目服务器挂进该会话的 scope。
 - **Client 半**（`lib/client.js`）：桌面 GUI 中的「MCP 服务器」页面，分两个 tab。
   **全局**：列出当前 profile 的全部 MCP 服务器，查看其 serverName / 传输方式 /
   目标 / 工具数 / 运行状态，点「新增服务器」按表单填写后直接追加一行（行 id 默认
   由 serverName 派生，可手改），编辑并保存配置（热重载，无需重启），启用或停用，
   从 `{"mcpServers": {...}}` 片段批量导入，以及删除（删除前自动备份原文到同目录 `.bak`）。
-  **项目**：选一个工作区，直接编辑该项目的 `.dsh/mcp.yml`；点「新增服务器」按表单
-  填写后合并进编辑器并落盘，也可以把 `.mcp.json` 片段转换后合并进编辑器。
+  **项目**：选一个工作区，同样一条服务器一张卡片——可新增、编辑、启用/停用、删除，
+  动作直接写入该项目的 `.dsh/mcp.yml`（删除前备份、保留其余注释）；页面最下方另有
+  默认折叠的「源码」区，用来手改注释、`disableGlobal` 或整份文本。
 
 界面文案内置中文与英文两套，跟随 dsh 主题 token 适配外观。
 
@@ -46,6 +48,10 @@ servers:
     url: https://mcp.figma.com/mcp   # 省略 transport：有 url 即 streamable-http
     headers:
       Authorization: "Bearer ..."
+  scratch:
+    command: node
+    args: ["./scratch-server.js"]
+    disabled: true                   # 保留配置但不挂载（卡片上的「停用」）
 ```
 
 语义：
@@ -55,7 +61,13 @@ servers:
 | 项目有、全局没有 | 新增，只对该项目的会话可见 |
 | 与全局同名 serverName | 项目覆盖全局（工具层 own 覆盖 inherited），**全局那份实例仍在后台运行**，只是工具被遮蔽 |
 | 全局有、项目不想用 | 写进 `disableGlobal`，按 serverName 前缀 `mcp__<name>__` 调 `tools.restrict({deny})` |
+| 项目条目写 `disabled: true` | 不挂载它，并把同名全局服务器的工具一并遮住——项目配置优先，「项目停用、全局启用」也表现为停用 |
+| 全局停用、项目条目启用 | 项目自己挂一份实例，因此表现为启用 |
 | 配置文件写错某条 | 该条跳过并在日志/界面报出原因，其余条目照常生效 |
+
+界面上这套语义对应一张卡片：状态标签显示项目条目的启停，启停按钮只增删
+`disabled: true`（配置本体一个字节都不动，重新启用能回到原样）；同一个
+serverName 在全局也存在时，卡片会额外标出「覆盖全局」。
 
 实现方式与 dsh 内部的 `browser-use-runtime` 相同：`agent/created` 时
 `createScope(ctx, agent)` + `scope.ctx.plugin(McpClient, config)`，工具因此落在该
@@ -127,11 +139,13 @@ dsh 安装目录里的那份包，没声明时 `require` 会直接 `MODULE_NOT_F
   编辑文件。注释只在新建时写入，改写既有行不会动它。
 - 删除：删除前回报「会一并删掉的注释行数」供确认，并把原文备份到同目录 `.bak`。
 - 写入只改目标行（就地逐键合并），注释、缩进、折行与 `!!js` 表达式保持原样。
-- 项目级：配置文件以纯文本编辑（保留注释与顺序）；「新增服务器」与 `.mcp.json` 的
-  转换结果都会合并进**编辑器当前文本**（不会用磁盘旧内容冲掉未保存的修改），
-  新增按钮保存时直接落盘；同名的 `.mcp.json` 条目会覆盖既有条目并明确提示。
+- 项目级：卡片是主视图，每条服务器可新增、编辑、启用/停用、删除；写作用 YAML
+  Document API 就地改一个条目，注释、缩进与顺序保留，删除前把原文备份到同目录；
+  卡片操作以源码编辑器的当前文本为基底，未保存的源码改动不会被冲掉。
+  页面最下方的「源码」区默认折叠，用于手改注释、`disableGlobal` 或整份文本，
+  也仍支持把 `.mcp.json` 片段转换后合并进去。
 - 项目级不做「运行中会话热切换」：会话中途切目录不会重新挂载，配置改动也只在
-  新会话生效。
+  新会话生效（包括启停）。
 
 ## 许可证
 
